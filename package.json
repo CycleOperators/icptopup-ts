@@ -1,0 +1,34 @@
+{
+  "name": "icptopup-ts",
+  "version": "0.0.0-alpha",
+  "description": "TypeScript agent for programmatically topping up canisters via ICPTopup",
+  "main": "index.js",
+  "scripts": {
+    "prepare": "husky",
+    "format": "prettier . --write",
+    "lint-staged": "lint-staged"
+  },
+  "lint-staged": {
+    "**/*.ts": "eslint --cache --fix",
+    "**/*.{ts,css,md}": "prettier --write"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@dfinity/agent": "^2.2.0",
+    "@dfinity/candid": "^2.2.0",
+    "@dfinity/ledger-icrc": "^2.7.0",
+    "@dfinity/principal": "^2.2.0",
+    "@dfinity/utils": "^2.8.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.3",
+    "globals": "^15.14.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "3.4.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.19.0"
+  }
+}
