@@ -1,6 +1,12 @@
-import { ActorSubclass, Agent } from "@dfinity/agent";
-import { createActor, CreateActorOptions } from "./declarations";
-import { _SERVICE as ICPTopupService } from "./declarations/topmeup.did.d";
+import { Actor, ActorSubclass, Agent, HttpAgent } from "@dfinity/agent";
+import {
+  _SERVICE as ICPTopupService,
+  V0AsyncBatchTopupArgs,
+  V0AsyncBatchTopupResponse,
+  V0BatchTopupResponse,
+  V0GetLatestRequestStateById,
+} from "./canister-declarations/topmeup.did.d";
+import { idlFactory as ICPTopupIDL } from "./canister-declarations/topmeup.did";
 import { IcrcLedgerCanister } from "@dfinity/ledger-icrc";
 import { Principal } from "@dfinity/principal";
 import {
@@ -11,55 +17,149 @@ import {
 const ICP_LEDGER_CANISTER_ID = "ryjl3-tyaaa-aaaaa-aaaba-cai";
 const ICPTOPUP_CANISTER_ID = "24qkv-5aaaa-aaaal-amhkq-cai";
 
-export type ICPTopupActor = ActorSubclass<ICPTopupService>;
-
-export function createICPTopupActor(
-  options: CreateActorOptions,
-): ICPTopupActor {
-  return createActor(ICPTOPUP_CANISTER_ID, options);
-}
-
 export interface ApproveICPTopupToSpendE8sArgs {
   e8sToApprove: bigint;
-  agent?: Agent;
+  agent: Agent;
 }
 
 type BlockIndex = bigint;
 
-export async function approveICPTopupToSpendE8s(
-  args: ApproveICPTopupToSpendE8sArgs,
-): Promise<BlockIndex> {
-  const ledgerActor = IcrcLedgerCanister.create({
-    canisterId: Principal.fromText(ICP_LEDGER_CANISTER_ID),
-    agent: args.agent,
-  });
-  return ledgerActor.approve({
-    amount: args.e8sToApprove,
-    spender: {
-      owner: Principal.fromText(ICPTOPUP_CANISTER_ID),
-      subaccount: [],
-    },
-  });
-}
-
 export interface GetICPTopupAllowanceArgs {
   account: Account;
-  agent?: Agent;
 }
 
-export async function getICPTopupAllowance(
-  args: GetICPTopupAllowanceArgs,
-): Promise<Allowance> {
-  const ledgerActor = IcrcLedgerCanister.create({
-    canisterId: Principal.fromText(ICP_LEDGER_CANISTER_ID),
-    agent: args.agent,
-  });
+export type BatchTopupSyncResponse = V0BatchTopupResponse;
+export type BatchTopupAsyncResponse = V0AsyncBatchTopupResponse;
+export type AsyncTopupStatus = V0GetLatestRequestStateById;
 
-  return ledgerActor.allowance({
-    account: args.account,
-    spender: {
-      owner: Principal.fromText(ICPTOPUP_CANISTER_ID),
-      subaccount: [],
-    },
-  });
+export interface PollAsyncStatusUntilCompleteArgs {
+  requestId: bigint;
+  pollIntervalInMs?: number;
+  logStatusUpdates?: boolean;
+}
+
+export default class ICPTopup {
+  actor: ActorSubclass<ICPTopupService>;
+
+  constructor(agent: Agent) {
+    this.actor = this.createActor(agent);
+  }
+
+  private createActor(agent: Agent): ActorSubclass<ICPTopupService> {
+    return Actor.createActor<ICPTopupService>(ICPTopupIDL, {
+      canisterId: ICPTOPUP_CANISTER_ID,
+      agent,
+    });
+  }
+
+  static async approveToSpendE8s(
+    args: ApproveICPTopupToSpendE8sArgs,
+  ): Promise<BlockIndex> {
+    const ledgerActor = IcrcLedgerCanister.create({
+      canisterId: Principal.fromText(ICP_LEDGER_CANISTER_ID),
+      agent: args.agent,
+    });
+    return ledgerActor.approve({
+      amount: args.e8sToApprove,
+      spender: {
+        owner: Principal.fromText(ICPTOPUP_CANISTER_ID),
+        subaccount: [],
+      },
+    });
+  }
+
+  static async checkAllowance(
+    args: GetICPTopupAllowanceArgs,
+  ): Promise<Allowance> {
+    const ledgerActor = IcrcLedgerCanister.create({
+      canisterId: Principal.fromText(ICP_LEDGER_CANISTER_ID),
+      agent: HttpAgent.createSync({ host: "https://ic0.app" }),
+    });
+
+    return ledgerActor.allowance({
+      account: args.account,
+      spender: {
+        owner: Principal.fromText(ICPTOPUP_CANISTER_ID),
+        subaccount: [],
+      },
+    });
+  }
+
+  static async getLatestTopupRequestStatus(
+    requestId: bigint,
+  ): Promise<AsyncTopupStatus> {
+    const icpTopupActor = Actor.createActor<ICPTopupService>(ICPTopupIDL, {
+      canisterId: ICPTOPUP_CANISTER_ID,
+      agent: HttpAgent.createSync({ host: "https://ic0.app" }),
+    });
+    return icpTopupActor.v0_getLatestRequestStateById(requestId);
+  }
+
+  static async pollAsyncStatusUntilComplete(
+    args: PollAsyncStatusUntilCompleteArgs,
+  ): Promise<AsyncTopupStatus> {
+    const pollIntervalInMs = args.pollIntervalInMs || 5000;
+
+    let topupStatus = await ICPTopup.getLatestTopupRequestStatus(
+      args.requestId,
+    );
+    if (args.logStatusUpdates) {
+      console.log(
+        "topupStatus",
+        JSON.stringify(topupStatus, (_, value) => {
+          if (typeof value === "bigint") return value.toString();
+          else if (value instanceof Principal) return value.toText();
+          return value;
+        }),
+      );
+    }
+
+    while (!isAsyncTopupComplete(topupStatus)) {
+      if (args.logStatusUpdates)
+        console.log(`sleeping for ${pollIntervalInMs} ms`);
+      await new Promise((r) => setTimeout(r, pollIntervalInMs));
+      topupStatus = await ICPTopup.getLatestTopupRequestStatus(args.requestId);
+      if (args.logStatusUpdates) {
+        console.log(
+          "topupStatus",
+          JSON.stringify(topupStatus, (_, value) => {
+            if (typeof value === "bigint") return value.toString();
+            else if (value instanceof Principal) return value.toText();
+            return value;
+          }),
+        );
+      }
+    }
+
+    return topupStatus;
+  }
+
+  async batchTopupSync(
+    args: V0AsyncBatchTopupArgs,
+  ): Promise<BatchTopupSyncResponse> {
+    if (!this.actor) {
+      throw new Error(
+        "Actor not created - must create first with ICPTopup.createActor()",
+      );
+    }
+    return this.actor.v0_batchTopupSync(args);
+  }
+
+  async batchTopupAsync(
+    args: V0AsyncBatchTopupArgs,
+  ): Promise<BatchTopupAsyncResponse> {
+    if (!this.actor) {
+      throw new Error(
+        "Actor not created - must create first with ICPTopup.createActor()",
+      );
+    }
+    return this.actor.v0_batchTopupAsync(args);
+  }
+}
+
+export function isAsyncTopupComplete(requestStatus: AsyncTopupStatus): boolean {
+  if (requestStatus.length === 0) return false;
+
+  const [status] = requestStatus;
+  return "success" in status || "error" in status;
 }

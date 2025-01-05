@@ -1,12 +1,12 @@
 {
-  "name": "test-icptopup-ts",
-  "version": "0.0.0-alpha",
+  "name": "icptopup-ts",
+  "version": "0.0.0-beta-1",
   "description": "TypeScript agent for programmatically topping up canisters via ICPTopup",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "repository": "https://github.com/CycleOperators/icptopup-ts",
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.publish.json",
+    "build": "rm -rf dist && tsc -p tsconfig.publish.json && cp src/canister-declarations/topmeup.did.d.ts dist/canister-declarations/topmeup.did.d.ts",
     "prepare": "husky",
     "format": "prettier . --write",
     "lint-staged": "lint-staged",
