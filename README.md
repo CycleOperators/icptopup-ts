@@ -2,6 +2,11 @@
 
 TypeScript agent for programmatically topping up canisters via ICPTopup
 
+- [Installation](#1-to-get-started-first-install-icptopup-ts)
+- [Approving Funds for Topups](#2-approve-icptopup-to-mint-cycles-from-icp-on-your-behalf)
+- [Usage](#3-instantiate-the-icptopup-actor)
+- [Asynchronous Usage](#perform-an-asynchronous-topup)
+
 ## Topping up canisters from ICP
 
 ICPTopup allows you to easily send cycles to up to 100 canisters at once.
@@ -23,7 +28,16 @@ const approvalBlockIndex = await ICPTopup.approveToSpendE8s({
 });
 ```
 
-### 3. Call ICPTopup's synchronous `batchTopupSync()` API, or its [asynchronous](#perform-an-asynchronous-topup) topup API.
+### 3. Instantiate the ICPTopup Actor
+
+In the agent, pass the identity that previously approved ICP to be spent by the ICPTopup service, and target the ICP mainnet host, https://ic0.app
+
+```
+const agent = HttpAgent.createSync({ identity, host: "https://ic0.app" });
+const icpTopupActor = new ICPTopup(agent);
+```
+
+### 4. Call ICPTopup's synchronous `batchTopupSync()` API, or its [asynchronous](#perform-an-asynchronous-topup) topup API.
 
 Both synchronous and asynchronous APIs allow you to specify:
 `e8sToTransfer` - ICP transferred for minting cycles
