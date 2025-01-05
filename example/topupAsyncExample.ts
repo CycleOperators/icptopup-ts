@@ -4,7 +4,7 @@ import { HttpAgent } from "@dfinity/agent";
 import { Principal } from "@dfinity/principal";
 
 // Node example - if in a browser context substitute taking the identity from a pem file with the identity you want to use
-async function approveAndTopupCanisterSync() {
+async function approveAndTopupCanisterAsync() {
   // if running via node, take in the pem file path as a cli argument
   const pemFilePath = process.argv[2];
   console.log("pemFilePath", pemFilePath);
@@ -45,14 +45,14 @@ async function approveAndTopupCanisterSync() {
   const icpTopupActor = new ICPTopup(agent);
   const topupResponse = await icpTopupActor.batchTopupAsync({
     e8sToTransfer: BigInt(1e7), // 0.1 ICP
-    canistersToTopup: [
+    topupTargets: [
       {
         canisterId: Principal.fromText("qc4nb-ciaaa-aaaap-aawqa-cai"),
-        cyclesToTopupWith: BigInt(1e11), // 0.1 trillion
+        topupProportion: 1n, // send 1/2 of the minted cycles here
       },
       {
         canisterId: Principal.fromText("gf3bz-2aaaa-aaaap-ahngq-cai"),
-        cyclesToTopupWith: BigInt(1e11), // 0.1 trillion
+        topupProportion: 1n, // send the other half of the minted cycles here
       },
     ],
   });
@@ -106,7 +106,7 @@ async function approveAndTopupCanisterSync() {
 }
 
 if (require.main === module) {
-  approveAndTopupCanisterSync()
+  approveAndTopupCanisterAsync()
     .then(() => {
       console.log("done");
     })

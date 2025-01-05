@@ -45,14 +45,14 @@ async function approveAndTopupCanisterSync() {
   const icpTopupActor = new ICPTopup(agent);
   const result = await icpTopupActor.batchTopupSync({
     e8sToTransfer: BigInt(1e7), // 0.1 ICP
-    canistersToTopup: [
+    topupTargets: [
       {
         canisterId: Principal.fromText("qc4nb-ciaaa-aaaap-aawqa-cai"),
-        cyclesToTopupWith: BigInt(1e11), // 0.1 trillion
+        topupProportion: 2n, // send up 2/3rds of the minted cycles here
       },
       {
         canisterId: Principal.fromText("gf3bz-2aaaa-aaaap-ahngq-cai"),
-        cyclesToTopupWith: BigInt(1e11), // 0.1 trillion
+        topupProportion: 1n, // send 1/3rd of the minted cycles here
       },
     ],
   });

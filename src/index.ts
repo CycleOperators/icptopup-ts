@@ -1,7 +1,6 @@
 import { Actor, ActorSubclass, Agent, HttpAgent } from "@dfinity/agent";
 import {
   _SERVICE as ICPTopupService,
-  V0AsyncBatchTopupArgs,
   V0AsyncBatchTopupResponse,
   V0BatchTopupResponse,
   V0GetLatestRequestStateById,
@@ -26,6 +25,14 @@ type BlockIndex = bigint;
 
 export interface GetICPTopupAllowanceArgs {
   account: Account;
+}
+
+export interface BatchTopupArgs {
+  e8sToTransfer: bigint;
+  topupTargets: {
+    canisterId: Principal;
+    topupProportion: bigint;
+  }[];
 }
 
 export type BatchTopupSyncResponse = V0BatchTopupResponse;
@@ -134,26 +141,64 @@ export default class ICPTopup {
     return topupStatus;
   }
 
-  async batchTopupSync(
-    args: V0AsyncBatchTopupArgs,
-  ): Promise<BatchTopupSyncResponse> {
+  async batchTopupSync(args: BatchTopupArgs): Promise<BatchTopupSyncResponse> {
     if (!this.actor) {
       throw new Error(
         "Actor not created - must create first with ICPTopup.createActor()",
       );
     }
-    return this.actor.v0_batchTopupSync(args);
+    if (args.e8sToTransfer < BigInt(1e7))
+      throw new Error("e8sToTransfer must be at least 0.1 ICP");
+    if (args.topupTargets.length === 0)
+      throw new Error("topupTargets must not be empty");
+    // ensure topup targets are canister IDs
+    if (
+      !args.topupTargets.every((target) =>
+        target.canisterId.toText().endsWith("-cai"),
+      )
+    )
+      throw new Error("must canister IDs");
+    // ensure topup proportions are not negative
+    if (args.topupTargets.some((target) => target.topupProportion < BigInt(0)))
+      throw new Error("topupProportion must be non-negative");
+    return this.actor.v0_batchTopupSync({
+      e8sToTransfer: args.e8sToTransfer,
+      canistersToTopup: args.topupTargets.map((target) => ({
+        canisterId: target.canisterId,
+        cyclesToTopupWith: target.topupProportion,
+      })),
+    });
   }
 
   async batchTopupAsync(
-    args: V0AsyncBatchTopupArgs,
+    args: BatchTopupArgs,
   ): Promise<BatchTopupAsyncResponse> {
     if (!this.actor) {
       throw new Error(
         "Actor not created - must create first with ICPTopup.createActor()",
       );
     }
-    return this.actor.v0_batchTopupAsync(args);
+    if (args.e8sToTransfer < BigInt(1e7))
+      throw new Error("e8sToTransfer must be at least 0.1 ICP");
+    if (args.topupTargets.length === 0)
+      throw new Error("topupTargets must not be empty");
+    // ensure topup targets are canister IDs
+    if (
+      !args.topupTargets.every((target) =>
+        target.canisterId.toText().endsWith("-cai"),
+      )
+    )
+      throw new Error("must canister IDs");
+    // ensure topup proportions are not negative
+    if (args.topupTargets.some((target) => target.topupProportion < BigInt(0)))
+      throw new Error("topupProportion must be non-negative");
+    return this.actor.v0_batchTopupAsync({
+      e8sToTransfer: args.e8sToTransfer,
+      canistersToTopup: args.topupTargets.map((target) => ({
+        canisterId: target.canisterId,
+        cyclesToTopupWith: target.topupProportion,
+      })),
+    });
   }
 }
 
