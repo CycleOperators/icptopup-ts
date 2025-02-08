@@ -1,9 +1,12 @@
 import { Actor, ActorSubclass, Agent, HttpAgent } from "@dfinity/agent";
 import {
   _SERVICE as ICPTopupService,
+  MintTopupAsyncOk,
+  MintTopupError,
+  MintTopupOk,
+  MintTopupRequestState,
+  Transaction,
   V0AsyncBatchTopupResponse,
-  V0BatchTopupResponse,
-  V0GetLatestRequestStateById,
 } from "./canister-declarations/topmeup.did.d";
 import { idlFactory as ICPTopupIDL } from "./canister-declarations/topmeup.did";
 import { IcrcLedgerCanister } from "@dfinity/ledger-icrc";
@@ -35,9 +38,26 @@ export interface BatchTopupArgs {
   }[];
 }
 
-export type BatchTopupSyncResponse = V0BatchTopupResponse;
 export type BatchTopupAsyncResponse = V0AsyncBatchTopupResponse;
-export type AsyncTopupStatus = V0GetLatestRequestStateById;
+
+// ICPTopupTransaction is an interface that is the same as the Transaction interface
+// except that it omits the cyclesSlippage field.
+// This is because the icptopup API is used differently than the in-app API, so slippage is not relevant.
+type ICPTopupTransaction = Omit<Transaction, "cyclesSlippage">;
+interface ICPTopupMintTopupOk extends Omit<MintTopupOk, "transactions"> {
+  transactions: ICPTopupTransaction[];
+}
+
+export type BatchTopupSyncResponse =
+  | { ok: ICPTopupMintTopupOk }
+  | { err: MintTopupError };
+
+// Modified type with `success` changed
+export type ICPMintTopupRequestState =
+  | Exclude<MintTopupRequestState, { success: MintTopupAsyncOk }>
+  | { success: ICPTopupMintTopupOk };
+
+export type AsyncTopupStatus = [] | [ICPMintTopupRequestState];
 
 export interface PollAsyncStatusUntilCompleteArgs {
   requestId: bigint;
@@ -99,7 +119,23 @@ export default class ICPTopup {
       canisterId: ICPTOPUP_CANISTER_ID,
       agent: HttpAgent.createSync({ host: "https://ic0.app" }),
     });
-    return icpTopupActor.v0_getLatestRequestStateById(requestId);
+    const latestRequestState = (
+      await icpTopupActor.v0_getLatestRequestStateById(requestId)
+    )[0];
+    if (latestRequestState === undefined) return [];
+    // If the request state is [success: MintTopupAsyncOk], then we need to convert it to ICPTopupMintTopupOk
+    if ("success" in latestRequestState) {
+      const state = latestRequestState.success;
+      const transactions = state.transactions.map(
+        ({ cyclesSlippage, ...txWithoutSlippage }) => {
+          void cyclesSlippage;
+          return txWithoutSlippage;
+        },
+      );
+      return [{ success: { ...state, transactions } }];
+    }
+
+    return [latestRequestState];
   }
 
   static async pollAsyncStatusUntilComplete(
@@ -161,13 +197,24 @@ export default class ICPTopup {
     // ensure topup proportions are not negative
     if (args.topupTargets.some((target) => target.topupProportion < BigInt(0)))
       throw new Error("topupProportion must be non-negative");
-    return this.actor.v0_batchTopupSync({
+    const result = await this.actor.v0_batchTopupSync({
       e8sToTransfer: args.e8sToTransfer,
       canistersToTopup: args.topupTargets.map((target) => ({
         canisterId: target.canisterId,
         cyclesToTopupWith: target.topupProportion,
       })),
     });
+    // convert transactions to ICPTopupTransaction type
+    if ("ok" in result) {
+      const transactions = result.ok.transactions.map(
+        ({ cyclesSlippage, ...txWithoutSlippage }) => {
+          void cyclesSlippage;
+          return txWithoutSlippage;
+        },
+      );
+      return { ok: { ...result.ok, transactions } };
+    }
+    return result;
   }
 
   async batchTopupAsync(

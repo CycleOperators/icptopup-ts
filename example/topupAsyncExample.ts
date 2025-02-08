@@ -52,7 +52,7 @@ async function approveAndTopupCanisterAsync() {
       },
       {
         canisterId: Principal.fromText("gf3bz-2aaaa-aaaap-ahngq-cai"),
-        topupProportion: 1n, // send the other half of the minted cycles here
+        topupProportion: 2n, // send the other half of the minted cycles here
       },
     ],
   });
